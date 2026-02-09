@@ -1,0 +1,64 @@
+{
+  "name": "@privy-io/mcp-server",
+  "version": "1.0.0",
+  "mcpName": "io.github.privy-io/mcp-server",
+  "description": "MCP server for Privy wallet infrastructure - create wallets, sign transactions, and manage policies with Claude and other AI agents",
+  "type": "module",
+  "main": "build/src/index.js",
+  "bin": {
+    "privy-mcp-server": "./build/src/index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsc && chmod +x build/src/index.js",
+    "dev": "tsc --watch",
+    "start": "node build/src/index.js",
+    "inspector": "npx @modelcontextprotocol/inspector build/src/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/privy-io/privy-mcp-server.git"
+  },
+  "homepage": "https://github.com/privy-io/privy-mcp-server#readme",
+  "bugs": {
+    "url": "https://github.com/privy-io/privy-mcp-server/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "privy",
+    "wallet",
+    "crypto",
+    "ethereum",
+    "solana",
+    "claude",
+    "anthropic",
+    "ai-agent",
+    "web3",
+    "blockchain",
+    "signing",
+    "transactions"
+  ],
+  "author": "Privy <support@privy.io> (https://privy.io)",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "dotenv": "^17.2.3",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.0",
+    "typescript": "^5.9.3"
+  },
+  "files": [
+    "build",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

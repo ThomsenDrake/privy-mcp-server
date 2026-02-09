@@ -1,0 +1,8 @@
+{
+  "name": "privy-wallet",
+  "description": "Give your agent a wallet with Privy",
+  "version": "1.0.0",
+  "author": {
+    "name": "Privy"
+  }
+}

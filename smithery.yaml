@@ -1,0 +1,32 @@
+# Smithery configuration for Privy MCP Server
+# https://smithery.ai/docs/config
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      PRIVY_APP_ID:
+        type: string
+        description: Your Privy App ID from the Privy Dashboard
+      PRIVY_APP_SECRET:
+        type: string
+        description: Your Privy App Secret from the Privy Dashboard
+      PRIVY_AUTHORIZATION_PRIVATE_KEY:
+        type: string
+        description: Private key for signing operations (optional)
+    required:
+      - PRIVY_APP_ID
+      - PRIVY_APP_SECRET
+  commandFunction: |-
+    (config) => ({
+      command: 'npx',
+      args: ['@privy-io/mcp-server'],
+      env: {
+        PRIVY_APP_ID: config.PRIVY_APP_ID,
+        PRIVY_APP_SECRET: config.PRIVY_APP_SECRET,
+        ...(config.PRIVY_AUTHORIZATION_PRIVATE_KEY && {
+          PRIVY_AUTHORIZATION_PRIVATE_KEY: config.PRIVY_AUTHORIZATION_PRIVATE_KEY
+        })
+      }
+    })

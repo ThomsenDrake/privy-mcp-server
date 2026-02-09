@@ -1,0 +1,6 @@
+{
+  "privy": {
+    "command": "node",
+    "args": ["build/src/index.js"]
+  }
+}

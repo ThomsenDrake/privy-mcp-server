@@ -1,0 +1,43 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.privy-io/mcp-server",
+  "description": "MCP server for Privy wallet infrastructure - create wallets, sign transactions, and manage policies with Claude and other AI agents. Supports Ethereum, Solana, and 10+ blockchain networks.",
+  "repository": {
+    "url": "https://github.com/privy-io/privy-mcp-server",
+    "source": "github"
+  },
+  "version": "1.0.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@privy-io/mcp-server",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "PRIVY_APP_ID",
+          "description": "Your Privy App ID from the Privy Dashboard",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "PRIVY_APP_SECRET",
+          "description": "Your Privy App Secret from the Privy Dashboard",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "PRIVY_AUTHORIZATION_PRIVATE_KEY",
+          "description": "Private key for signing operations on owner-controlled wallets (optional)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}
