@@ -2,9 +2,13 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
+import { randomUUID } from 'node:crypto';
 import { z } from "zod";
 import { Transform, type TransformCallback } from 'node:stream';
+import type { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
 import { getAllTools } from './tools.js';
 import { handleToolCall } from './handlers.js';
@@ -342,9 +346,160 @@ async function createPrivyMcpServer() {
   return server;
 }
 
-/**
- * Main function to start the MCP server
- */
+async function startHttpServer() {
+  const PORT = parseInt(process.env.PORT || '3000', 10);
+  const app = createMcpExpressApp({ host: '0.0.0.0' });
+
+  const sessions = new Map<string, { server: Server; transport: StreamableHTTPServerTransport }>();
+
+  if (MCP_AUTH_TOKEN) {
+    const expectedAuth = `Bearer ${MCP_AUTH_TOKEN}`;
+    app.use('/mcp', (req: Request, res: Response, next: NextFunction) => {
+      const authHeader = req.headers.authorization;
+      if (authHeader !== expectedAuth) {
+        res.status(401).json({
+          jsonrpc: '2.0',
+          error: { code: -32600, message: 'Unauthorized: Invalid or missing bearer token' },
+          id: null
+        });
+        return;
+      }
+      next();
+    });
+    console.error("🔒 Bearer token authentication enabled");
+  }
+
+  app.post('/mcp', async (req: Request, res: Response) => {
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+    if (sessionId && sessions.has(sessionId)) {
+      const session = sessions.get(sessionId)!;
+      await session.transport.handleRequest(req, res, req.body);
+      return;
+    }
+
+    if (sessionId && !sessions.has(sessionId)) {
+      res.status(404).json({
+        jsonrpc: '2.0',
+        error: { code: -32000, message: 'Session not found' },
+        id: null
+      });
+      return;
+    }
+
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (id) => {
+        sessions.set(id, { server, transport });
+      }
+    });
+
+    transport.onclose = () => {
+      if (transport.sessionId) {
+        sessions.delete(transport.sessionId);
+      }
+    };
+
+    const server = await createPrivyMcpServer();
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+  });
+
+  app.get('/mcp', async (req: Request, res: Response) => {
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    if (sessionId && sessions.has(sessionId)) {
+      const session = sessions.get(sessionId)!;
+      await session.transport.handleRequest(req, res);
+      return;
+    }
+    res.status(400).json({
+      jsonrpc: '2.0',
+      error: { code: -32000, message: 'Invalid or missing session ID' },
+      id: null
+    });
+  });
+
+  app.delete('/mcp', async (req: Request, res: Response) => {
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    if (sessionId && sessions.has(sessionId)) {
+      const session = sessions.get(sessionId)!;
+      await session.transport.handleRequest(req, res);
+      return;
+    }
+    res.status(404).json({
+      jsonrpc: '2.0',
+      error: { code: -32000, message: 'Session not found' },
+      id: null
+    });
+  });
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.error(`🚀 Privy MCP Server listening on http://0.0.0.0:${PORT}/mcp`);
+  });
+}
+
+async function startStdioServer() {
+  const server = await createPrivyMcpServer();
+
+  let transport: StdioServerTransport;
+
+  if (MCP_AUTH_TOKEN) {
+    const expectedAuth = `Bearer ${MCP_AUTH_TOKEN}`;
+    let authBuffer = '';
+
+    const authTransform = new Transform({
+      transform(chunk: Buffer, _encoding: string, callback: TransformCallback) {
+        authBuffer += chunk.toString();
+        const lines = authBuffer.split('\n');
+        authBuffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.replace(/\r$/, '');
+          if (!trimmed) {
+            callback();
+            return;
+          }
+
+          try {
+            const raw = JSON.parse(trimmed);
+            const authHeader = raw.auth || raw.headers?.authorization;
+
+            if (authHeader !== expectedAuth) {
+              const errorResponse = JSON.stringify({
+                jsonrpc: '2.0',
+                id: raw.id ?? null,
+                error: {
+                  code: -32600,
+                  message: 'Unauthorized: Invalid or missing bearer token'
+                }
+              }) + '\n';
+              process.stdout.write(errorResponse);
+              continue;
+            }
+
+            delete raw.auth;
+            delete raw.headers;
+            this.push(JSON.stringify(raw) + '\n');
+          } catch {
+            this.push(line + '\n');
+          }
+        }
+
+        callback();
+      }
+    });
+
+    const authedStdin = process.stdin.pipe(authTransform);
+    transport = new StdioServerTransport(authedStdin as any);
+    console.error("🔒 Bearer token authentication enabled");
+  } else {
+    transport = new StdioServerTransport();
+  }
+
+  await server.connect(transport);
+  console.error("🚀 Privy MCP Server is running via stdio");
+}
+
 async function main() {
   const privyAppId = process.env.PRIVY_APP_ID;
   const privyAppSecret = process.env.PRIVY_APP_SECRET;
@@ -357,74 +512,15 @@ async function main() {
     process.exit(1);
   }
 
-  try {
-    const server = await createPrivyMcpServer();
+  const useHttp = process.env.MCP_TRANSPORT === 'http' || process.env.PORT;
 
-    let transport: StdioServerTransport;
-
-    if (MCP_AUTH_TOKEN) {
-      const expectedAuth = `Bearer ${MCP_AUTH_TOKEN}`;
-      let authBuffer = '';
-
-      const authTransform = new Transform({
-        transform(chunk: Buffer, _encoding: string, callback: TransformCallback) {
-          authBuffer += chunk.toString();
-          const lines = authBuffer.split('\n');
-          authBuffer = lines.pop() || '';
-
-          for (const line of lines) {
-            const trimmed = line.replace(/\r$/, '');
-            if (!trimmed) {
-              callback();
-              return;
-            }
-
-            try {
-              const raw = JSON.parse(trimmed);
-              const authHeader = raw.auth || raw.headers?.authorization;
-
-              if (authHeader !== expectedAuth) {
-                const errorResponse = JSON.stringify({
-                  jsonrpc: '2.0',
-                  id: raw.id ?? null,
-                  error: {
-                    code: -32600,
-                    message: 'Unauthorized: Invalid or missing bearer token'
-                  }
-                }) + '\n';
-                process.stdout.write(errorResponse);
-                continue;
-              }
-
-              delete raw.auth;
-              delete raw.headers;
-              this.push(JSON.stringify(raw) + '\n');
-            } catch {
-              this.push(line + '\n');
-            }
-          }
-
-          callback();
-        }
-      });
-
-      const authedStdin = process.stdin.pipe(authTransform);
-      transport = new StdioServerTransport(authedStdin as any);
-      console.error("🔒 Bearer token authentication enabled");
-    } else {
-      transport = new StdioServerTransport();
-    }
-
-    await server.connect(transport);
-    console.error("🚀 Privy MCP Server is running via stdio");
-
-  } catch (error) {
-    console.error("❌ Failed to start server:", error);
-    process.exit(1);
+  if (useHttp) {
+    await startHttpServer();
+  } else {
+    await startStdioServer();
   }
 }
 
-// Start the server
 main().catch((error) => {
   console.error("Fatal error:", error);
   process.exit(1);

@@ -34,6 +34,9 @@ Required environment variables:
 - `PRIVY_APP_SECRET` - Your Privy app secret  
 - `PRIVY_API_BASE_URL` - Privy API base URL (default: https://api.privy.io/v1)
 - `PRIVY_AUTHORIZATION_PRIVATE_KEY` - Optional, for operations requiring authorization signatures
+- `MCP_AUTH_TOKEN` - Optional, bearer token for authenticating requests
+- `MCP_TRANSPORT` - Optional, set to `http` for Streamable HTTP transport
+- `PORT` - Optional, HTTP port (auto-enables HTTP mode when set)
 
 ## Architecture
 
@@ -43,7 +46,8 @@ Required environment variables:
 - Contains the main `PrivyClient` class that handles all Privy API interactions
 - Implements authorization signature generation for sensitive operations (key quorums, policies, wallet RPC)
 - Uses `canonicalizeJson()` method for RFC 8785 JSON canonicalization
-- Sets up MCP server with stdio transport
+- Supports both stdio and Streamable HTTP transports (selected via `PORT` or `MCP_TRANSPORT` env vars)
+- Optional bearer token auth via `MCP_AUTH_TOKEN` (HTTP: `Authorization` header; stdio: `auth` field in JSON-RPC)
 - Entry point that validates environment and starts the server
 
 **`src/tools.ts` - Tool Definitions**

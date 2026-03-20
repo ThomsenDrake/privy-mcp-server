@@ -194,7 +194,9 @@ Transaction submitted! Hash: 0xabc123...
 | `PRIVY_APP_SECRET` | Yes | Your Privy App Secret |
 | `PRIVY_AUTHORIZATION_PRIVATE_KEY` | No | For signing ops on owner-controlled wallets |
 | `PRIVY_API_BASE_URL` | No | Custom API URL (default: https://api.privy.io/v1) |
-| `MCP_AUTH_TOKEN` | No | Bearer token for authenticating JSON-RPC messages (see below) |
+| `MCP_AUTH_TOKEN` | No | Bearer token for authenticating requests (see below) |
+| `MCP_TRANSPORT` | No | Set to `http` to use Streamable HTTP transport |
+| `PORT` | No | Port for HTTP transport (default: 3000, auto-enables HTTP mode) |
 
 ## Testing
 
@@ -204,15 +206,50 @@ Use the MCP Inspector to test tools interactively:
 npm run inspector
 ```
 
-## Bearer Token Authentication
+## Remote Deployment (HTTP Transport)
 
-When deploying the MCP server remotely (e.g. Railway, Fly.io), you can require bearer token authentication on all incoming JSON-RPC messages by setting `MCP_AUTH_TOKEN`:
+For remote deployments (Railway, Fly.io, etc.), set `PORT` or `MCP_TRANSPORT=http` to enable Streamable HTTP transport:
 
 ```bash
+PORT=3000
 MCP_AUTH_TOKEN=your_secret_token
 ```
 
-When set, every JSON-RPC message must include an `auth` field:
+The server exposes a single `/mcp` endpoint that handles POST (JSON-RPC), GET (SSE streaming), and DELETE (session cleanup). Connect to it using any MCP client that supports Streamable HTTP, or use [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) to bridge from stdio-only clients:
+
+```json
+{
+  "mcpServers": {
+    "privy": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "https://your-deployment.up.railway.app/mcp",
+        "--header",
+        "Authorization:${AUTH_HEADER}"
+      ],
+      "env": {
+        "AUTH_HEADER": "Bearer your_secret_token"
+      }
+    }
+  }
+}
+```
+
+## Bearer Token Authentication
+
+When `MCP_AUTH_TOKEN` is set, all requests require a valid bearer token. Authentication is optional — when unset, the server accepts all requests (the default for local usage).
+
+**HTTP transport**: Use the standard `Authorization` header:
+
+```bash
+curl -X POST https://your-server/mcp \
+  -H "Authorization: Bearer your_secret_token" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
+```
+
+**Stdio transport**: Include an `auth` field in the JSON-RPC message:
 
 ```json
 {
@@ -223,7 +260,7 @@ When set, every JSON-RPC message must include an `auth` field:
 }
 ```
 
-Messages with a missing or invalid token receive a `-32600` error response. When `MCP_AUTH_TOKEN` is not set, authentication is disabled and the server accepts all messages (the default for local usage).
+Requests with a missing or invalid token receive a `-32600` error response.
 
 ## Security Best Practices
 
