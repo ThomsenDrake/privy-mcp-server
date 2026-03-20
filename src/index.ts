@@ -16,6 +16,8 @@ import {
 // Load environment variables
 dotenv.config();
 
+const MCP_AUTH_TOKEN = process.env.MCP_AUTH_TOKEN;
+
 export class PrivyClient {
   private appId: string;
   private appSecret: string;
@@ -354,10 +356,41 @@ async function main() {
     process.exit(1);
   }
 
+  if (!MCP_AUTH_TOKEN) {
+    console.error(
+      "❌ Missing MCP_AUTH_TOKEN in environment variables."
+    );
+    console.error("Please set MCP_AUTH_TOKEN to secure your MCP server.");
+    process.exit(1);
+  }
+
   try {
     const server = await createPrivyMcpServer();
     const transport = new StdioServerTransport();
     await server.connect(transport);
+
+    const serverOnMessage = transport.onmessage;
+    transport.onmessage = (message: any) => {
+      const authHeader = message.auth || message.headers?.authorization;
+      const expectedAuth = `Bearer ${MCP_AUTH_TOKEN}`;
+
+      if (authHeader !== expectedAuth) {
+        transport.send({
+          jsonrpc: '2.0',
+          id: message.id ?? null,
+          error: {
+            code: -32600,
+            message: 'Unauthorized: Invalid or missing bearer token'
+          }
+        } as any);
+        return;
+      }
+
+      if (serverOnMessage) {
+        serverOnMessage(message);
+      }
+    };
+
     console.error("🚀 Privy MCP Server is running via stdio");
 
   } catch (error) {
