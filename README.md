@@ -194,6 +194,7 @@ Transaction submitted! Hash: 0xabc123...
 | `PRIVY_APP_SECRET` | Yes | Your Privy App Secret |
 | `PRIVY_AUTHORIZATION_PRIVATE_KEY` | No | For signing ops on owner-controlled wallets |
 | `PRIVY_API_BASE_URL` | No | Custom API URL (default: https://api.privy.io/v1) |
+| `MCP_AUTH_TOKEN` | No | Bearer token for authenticating JSON-RPC messages (see below) |
 
 ## Testing
 
@@ -203,9 +204,31 @@ Use the MCP Inspector to test tools interactively:
 npm run inspector
 ```
 
+## Bearer Token Authentication
+
+When deploying the MCP server remotely (e.g. Railway, Fly.io), you can require bearer token authentication on all incoming JSON-RPC messages by setting `MCP_AUTH_TOKEN`:
+
+```bash
+MCP_AUTH_TOKEN=your_secret_token
+```
+
+When set, every JSON-RPC message must include an `auth` field:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/list",
+  "id": 1,
+  "auth": "Bearer your_secret_token"
+}
+```
+
+Messages with a missing or invalid token receive a `-32600` error response. When `MCP_AUTH_TOKEN` is not set, authentication is disabled and the server accepts all messages (the default for local usage).
+
 ## Security Best Practices
 
 - **Never commit credentials** - Use environment variables
+- **Use bearer token auth** when deploying remotely by setting `MCP_AUTH_TOKEN`
 - **Use policies** to restrict what transactions your agent can execute
 - **Set up key quorums** for high-value operations requiring multiple approvals
 - **Monitor transactions** via Privy Dashboard webhooks

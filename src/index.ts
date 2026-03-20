@@ -357,66 +357,65 @@ async function main() {
     process.exit(1);
   }
 
-  if (!MCP_AUTH_TOKEN) {
-    console.error(
-      "❌ Missing MCP_AUTH_TOKEN in environment variables."
-    );
-    console.error("Please set MCP_AUTH_TOKEN to secure your MCP server.");
-    process.exit(1);
-  }
-
   try {
     const server = await createPrivyMcpServer();
 
-    const expectedAuth = `Bearer ${MCP_AUTH_TOKEN}`;
-    let authBuffer = '';
+    let transport: StdioServerTransport;
 
-    const authTransform = new Transform({
-      transform(chunk: Buffer, _encoding: string, callback: TransformCallback) {
-        authBuffer += chunk.toString();
-        const lines = authBuffer.split('\n');
-        authBuffer = lines.pop() || '';
+    if (MCP_AUTH_TOKEN) {
+      const expectedAuth = `Bearer ${MCP_AUTH_TOKEN}`;
+      let authBuffer = '';
 
-        for (const line of lines) {
-          const trimmed = line.replace(/\r$/, '');
-          if (!trimmed) {
-            callback();
-            return;
-          }
+      const authTransform = new Transform({
+        transform(chunk: Buffer, _encoding: string, callback: TransformCallback) {
+          authBuffer += chunk.toString();
+          const lines = authBuffer.split('\n');
+          authBuffer = lines.pop() || '';
 
-          try {
-            const raw = JSON.parse(trimmed);
-            const authHeader = raw.auth || raw.headers?.authorization;
-
-            if (authHeader !== expectedAuth) {
-              const errorResponse = JSON.stringify({
-                jsonrpc: '2.0',
-                id: raw.id ?? null,
-                error: {
-                  code: -32600,
-                  message: 'Unauthorized: Invalid or missing bearer token'
-                }
-              }) + '\n';
-              process.stdout.write(errorResponse);
-              continue;
+          for (const line of lines) {
+            const trimmed = line.replace(/\r$/, '');
+            if (!trimmed) {
+              callback();
+              return;
             }
 
-            delete raw.auth;
-            delete raw.headers;
-            this.push(JSON.stringify(raw) + '\n');
-          } catch {
-            this.push(line + '\n');
+            try {
+              const raw = JSON.parse(trimmed);
+              const authHeader = raw.auth || raw.headers?.authorization;
+
+              if (authHeader !== expectedAuth) {
+                const errorResponse = JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: raw.id ?? null,
+                  error: {
+                    code: -32600,
+                    message: 'Unauthorized: Invalid or missing bearer token'
+                  }
+                }) + '\n';
+                process.stdout.write(errorResponse);
+                continue;
+              }
+
+              delete raw.auth;
+              delete raw.headers;
+              this.push(JSON.stringify(raw) + '\n');
+            } catch {
+              this.push(line + '\n');
+            }
           }
+
+          callback();
         }
+      });
 
-        callback();
-      }
-    });
+      const authedStdin = process.stdin.pipe(authTransform);
+      transport = new StdioServerTransport(authedStdin as any);
+      console.error("🔒 Bearer token authentication enabled");
+    } else {
+      transport = new StdioServerTransport();
+    }
 
-    const authedStdin = process.stdin.pipe(authTransform);
-    const transport = new StdioServerTransport(authedStdin as any);
     await server.connect(transport);
-
     console.error("🚀 Privy MCP Server is running via stdio");
 
   } catch (error) {
